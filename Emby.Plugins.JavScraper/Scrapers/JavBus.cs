@@ -24,6 +24,16 @@ namespace Emby.Plugins.JavScraper.Scrapers
         public override string Name => "JavBus";
 
         /// <summary>
+        /// JavBus 候选镜像
+        /// </summary>
+        private static readonly string[] mirrors = new[]
+        {
+            "https://www.javbus.com/",
+            "https://www.javbus.cloud/"
+        };
+
+
+        /// <summary>
         /// 构造
         /// </summary>
         /// <param name="handler"></param>
@@ -53,26 +63,48 @@ namespace Emby.Plugins.JavScraper.Scrapers
         /// <returns></returns>
         protected override async Task<List<JavVideoIndex>> DoQyery(List<JavVideoIndex> ls, string key)
         {
-            //https://www.javbus.cloud/search/33&type=1
-            //https://www.javbus.cloud/uncensored/search/33&type=0&parent=uc
-            var doc = await GetHtmlDocumentAsync($"/search/{key}&type=1");
-            if (doc != null)
+            // https://www.javbus.com/search/33&type=1
+            // https://www.javbus.cloud/uncensored/search/33&type=0&parent=uc
+            foreach (var mirror in mirrors)
             {
-                ParseIndex(ls, doc);
-
-                //判断是否有 无码的影片
-                var node = doc.DocumentNode.SelectSingleNode("//a[contains(@href,'/uncensored/search/')]");
-                if (node != null)
+                try
                 {
-                    var t = node.InnerText;
-                    var ii = t.Split('/');
-                    //没有
-                    if (ii.Length > 2 && ii[1].Trim().StartsWith("0"))
-                        return ls;
+                    if (string.Equals(BaseUrl, mirror, StringComparison.OrdinalIgnoreCase) == false)
+                        BaseUrl = mirror;
+
+                    var doc = await GetHtmlDocumentAsync($"/search/{key}&type=1");
+                    if (doc != null)
+                    {
+                        ParseIndex(ls, doc);
+
+                        // 判断是否有无码影片入口
+                        var node = doc.DocumentNode.SelectSingleNode("//a[contains(@href,'/uncensored/search/')]");
+                        if (node != null)
+                        {
+                            var t = node.InnerText;
+                            var ii = t.Split('/');
+                            if (ii.Length > 2 && ii[1].Trim().StartsWith("0"))
+                            {
+                                if (ls.Any())
+                                    break;
+                            }
+                        }
+                    }
+
+                    if (ls.Any() == false)
+                    {
+                        doc = await GetHtmlDocumentAsync($"/uncensored/search/{key}&type=1");
+                        ParseIndex(ls, doc);
+                    }
+
+                    if (ls.Any())
+                        break;
+                }
+                catch (Exception ex)
+                {
+                    log?.Warn($"JavBus mirror failed: {mirror} {ex.Message}");
                 }
             }
-            doc = await GetHtmlDocumentAsync($"/uncensored/search/{key}&type=1");
-            ParseIndex(ls, doc);
 
             SortIndex(key, ls);
             return ls;
@@ -103,7 +135,15 @@ namespace Emby.Plugins.JavScraper.Scrapers
                 if (img != null)
                 {
                     m.Cover = img.GetAttributeValue("src", null);
+                    if (string.IsNullOrWhiteSpace(m.Cover))
+                        m.Cover = img.GetAttributeValue("data-src", null);
+                    if (string.IsNullOrWhiteSpace(m.Cover))
+                        m.Cover = img.GetAttributeValue("data-original", null);
+                    if (m.Cover?.StartsWith("//") == true)
+                        m.Cover = $"https:{m.Cover}";
                     m.Title = img.GetAttributeValue("title", null);
+                    if (string.IsNullOrWhiteSpace(m.Title))
+                        m.Title = img.GetAttributeValue("alt", null);
                 }
                 var dates = node.SelectNodes(".//date");
                 if (dates?.Count >= 1)
@@ -129,6 +169,24 @@ namespace Emby.Plugins.JavScraper.Scrapers
         {
             //https://www.javbus.cloud/ABP-933
             var doc = await GetHtmlDocumentAsync(url);
+            if (doc == null)
+            {
+                foreach (var mirror in mirrors)
+                {
+                    try
+                    {
+                        var uri = new Uri(url);
+                        var rebuilt = $"{mirror.TrimEnd('/')}{uri.PathAndQuery}";
+                        doc = await GetHtmlDocumentAsync(rebuilt);
+                        if (doc != null)
+                        {
+                            url = rebuilt;
+                            break;
+                        }
+                    }
+                    catch { }
+                }
+            }
             if (doc == null)
                 return null;
 
