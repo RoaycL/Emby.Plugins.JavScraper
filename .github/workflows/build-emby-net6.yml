@@ -24,8 +24,11 @@ jobs:
 
       - name: Generate Version
         id: version
+        shell: pwsh
         run: |
-          echo "version=$(date -u '+%Y.%-m%d.%-H%M.0')" >> "$GITHUB_OUTPUT"
+          $v = (Get-Date).ToUniversalTime().ToString("yyyy.Mdd.HHmm.0")
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "version=$v"
 
       - name: Build plugin (Release)
         shell: pwsh
