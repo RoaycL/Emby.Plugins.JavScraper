@@ -53,7 +53,20 @@ namespace Emby.Plugins.JavScraper.Scrapers
                 if (base_url == value && client != null)
                     return;
                 base_url = value;
-                client = new HttpClientEx(client => client.BaseAddress = new Uri(base_url));
+                client = new HttpClientEx(client =>
+                {
+                    client.BaseAddress = new Uri(base_url);
+                    if (client.DefaultRequestHeaders.Contains("User-Agent") == false)
+                        client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36");
+                    if (client.DefaultRequestHeaders.Contains("Accept") == false)
+                        client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+                    if (client.DefaultRequestHeaders.Contains("Accept-Language") == false)
+                        client.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7");
+                    if (client.DefaultRequestHeaders.Contains("Cache-Control") == false)
+                        client.DefaultRequestHeaders.TryAddWithoutValidation("Cache-Control", "no-cache");
+                    if (client.DefaultRequestHeaders.Contains("Pragma") == false)
+                        client.DefaultRequestHeaders.TryAddWithoutValidation("Pragma", "no-cache");
+                });
                 log?.Info($"BaseUrl: {base_url}");
             }
         }
