@@ -28,6 +28,16 @@ namespace Emby.Plugins.JavScraper.Scrapers
         private static Regex regex = new Regex("((?<a>[a-z]{2,})|(?<b>[0-9]{2,}))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         /// <summary>
+        /// JavDB 候选镜像
+        /// </summary>
+        private static readonly string[] mirrors = new[]
+        {
+            "https://javdb.com/",
+            "https://javdb8.com/"
+        };
+
+
+        /// <summary>
         /// 构造
         /// </summary>
         /// <param name="handler"></param>
@@ -38,7 +48,7 @@ namespace Emby.Plugins.JavScraper.Scrapers
             ILogManager logManager
 #endif
             )
-            : base("https://javdb8.com/", logManager.CreateLogger<JavDB>())
+            : base("https://javdb.com/", logManager.CreateLogger<JavDB>())
         {
         }
 
@@ -57,10 +67,26 @@ namespace Emby.Plugins.JavScraper.Scrapers
         /// <returns></returns>
         protected override async Task<List<JavVideoIndex>> DoQyery(List<JavVideoIndex> ls, string key)
         {
-            ///https://javdb.com/search?q=ADN-106&f=all
-            var doc = await GetHtmlDocumentAsync($"/search?q={key}&f=all");
-            if (doc != null)
-                ParseIndex(ls, doc);
+            /// https://javdb.com/search?q=ADN-106&f=all
+            foreach (var mirror in mirrors)
+            {
+                try
+                {
+                    if (string.Equals(BaseUrl, mirror, StringComparison.OrdinalIgnoreCase) == false)
+                        BaseUrl = mirror;
+
+                    var doc = await GetHtmlDocumentAsync($"/search?q={key}&f=all");
+                    if (doc != null)
+                        ParseIndex(ls, doc);
+
+                    if (ls.Any())
+                        break;
+                }
+                catch (Exception ex)
+                {
+                    log?.Warn($"JavDB mirror failed: {mirror} {ex.Message}");
+                }
+            }
 
             if (ls.Any())
             {
@@ -146,6 +172,24 @@ namespace Emby.Plugins.JavScraper.Scrapers
         {
             //https://javdb.com/v/BzbA6
             var doc = await GetHtmlDocumentAsync(url);
+            if (doc == null)
+            {
+                foreach (var mirror in mirrors)
+                {
+                    try
+                    {
+                        var uri = new Uri(url);
+                        var rebuilt = $"{mirror.TrimEnd('/')}{uri.PathAndQuery}";
+                        doc = await GetHtmlDocumentAsync(rebuilt);
+                        if (doc != null)
+                        {
+                            url = rebuilt;
+                            break;
+                        }
+                    }
+                    catch { }
+                }
+            }
             if (doc == null)
                 return null;
 

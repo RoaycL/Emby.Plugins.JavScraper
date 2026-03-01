@@ -296,6 +296,59 @@ namespace Emby.Plugins.JavScraper
             var enableScrapers = Plugin.Instance?.Configuration?.GetEnableScrapers()?.Select(o => o.Name).ToList();
             if (enableScrapers?.Any() == true)
                 scrapers = scrapers.Where(o => enableScrapers.Contains(o.Name)).ToList();
+
+            var disabledScrapers = new[] { "MgsTage", "R18" };
+            var beforeFilterCount = scrapers.Count;
+            scrapers = scrapers.Where(o => disabledScrapers.Contains(o.Name, StringComparer.OrdinalIgnoreCase) == false).ToList();
+            if (scrapers.Count != beforeFilterCount)
+                _logger?.Info($"{nameof(GetSearchResults)} filtered unavailable scrapers: {string.Join(", ", disabledScrapers)}");
+
+            if (javid?.matcher == nameof(JavIdRecognizer.FC2))
+            {
+                string digits = new string((javid.id ?? string.Empty).Where(char.IsDigit).ToArray());
+                var fc2Keys = new[]
+                {
+                    key,
+                    $"FC2-{digits}",
+                    $"FC2-PPV-{digits}",
+                    $"FC2PPV-{digits}",
+                    $"FC2PPV{digits}",
+                    digits,
+                    searchInfo.Name
+                }
+                .Where(v => string.IsNullOrWhiteSpace(v) == false)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+                _logger?.Info($"{nameof(GetSearchResults)} FC2 candidates: {string.Join(", ", fc2Keys)}");
+
+                var fc2Scrapers = scrapers.Where(o => string.Equals(o.Name, "FC2", StringComparison.OrdinalIgnoreCase)).ToList();
+                foreach (var fc2Key in fc2Keys)
+                {
+                    foreach (var scraper in fc2Scrapers)
+                    {
+                        var results = await scraper.Query(fc2Key).ConfigureAwait(false);
+                        if (results?.Any() == true)
+                        {
+                            _logger?.Info($"{nameof(GetSearchResults)} name:{searchInfo.Name} matched FC2 key:{fc2Key} count:{results.Count}");
+                            return results.Select(m =>
+                            {
+                                var result = new RemoteSearchResult
+                                {
+                                    Name = $"{m.Num} {m.Title}",
+                                    ProductionYear = m.GetYear(),
+                                    ImageUrl = null,
+                                    SearchProviderName = Name,
+                                    PremiereDate = m.GetDate(),
+                                };
+                                result.SetJavVideoIndex(_jsonSerializer, m);
+                                return result;
+                            }).ToList();
+                        }
+                    }
+                }
+            }
+
             var tasks = scrapers.Select(o => o.Query(key)).ToArray();
             await Task.WhenAll(tasks);
             var all = tasks.Where(o => o.Result?.Any() == true).SelectMany(o => o.Result).ToList();
@@ -312,14 +365,36 @@ namespace Emby.Plugins.JavScraper
                   .SelectMany(o => o)
                   .ToList();
 
+            string NormalizeCode(string value)
+                => new string((value ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+
+            var searchCode = NormalizeCode(javid?.id ?? searchInfo.Name);
+            if (string.IsNullOrWhiteSpace(searchCode) == false)
+            {
+                var exactMatches = all.Where(o => NormalizeCode(o.Num) == searchCode).ToList();
+                if (exactMatches.Any())
+                {
+                    _logger?.Info($"{nameof(GetSearchResults)} exact code match hit:{searchCode} count:{exactMatches.Count}");
+                    all = exactMatches;
+                }
+                else
+                {
+                    all = all.OrderByDescending(o => NormalizeCode(o.Num).StartsWith(searchCode, StringComparison.OrdinalIgnoreCase))
+                             .ThenByDescending(o => NormalizeCode(o.Num).Contains(searchCode, StringComparison.OrdinalIgnoreCase))
+                             .ThenBy(o => o.Provider)
+                             .ToList();
+                }
+            }
+
             foreach (var m in all)
             {
+                var title = string.IsNullOrWhiteSpace(m.Title) ? m.Num : $"{m.Num} {m.Title}";
                 var result = new RemoteSearchResult
                 {
-                    Name = $"{m.Num} {m.Title}",
+                    Name = title?.Trim(),
                     ProductionYear = m.GetYear(),
                     ImageUrl = await imageProxyService.GetLocalUrl(m.Cover, with_api_url: false),
-                    SearchProviderName = Name,
+                    SearchProviderName = $"{Name}/{m.Provider}",
                     PremiereDate = m.GetDate(),
                 };
                 result.SetJavVideoIndex(_jsonSerializer, m);

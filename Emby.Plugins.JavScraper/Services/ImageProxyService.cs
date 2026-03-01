@@ -95,7 +95,17 @@ namespace Emby.Plugins.JavScraper.Services
             logger?.Info($"{nameof(GetImageResponse)}-{url}");
 
             var key = WebUtility.UrlEncode(url);
-            var cache_file = Path.Combine(appPaths.GetImageCachePath().ToString(), key);
+            var cache_dir = appPaths.GetImageCachePath().ToString();
+            try
+            {
+                if (Directory.Exists(cache_dir) == false)
+                    Directory.CreateDirectory(cache_dir);
+            }
+            catch (Exception ex)
+            {
+                logger?.Warn($"Ensure image cache dir failed. {cache_dir} {ex.Message}");
+            }
+            var cache_file = Path.Combine(cache_dir, key);
             byte[] bytes = null;
 
             //尝试从缓存中读取

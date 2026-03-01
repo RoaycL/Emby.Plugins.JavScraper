@@ -1,0 +1,75 @@
+name: Build Emby JavScraper (net6)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/emby-modernize-build
+
+permissions:
+  contents: write
+
+jobs:
+  build-emby-net6:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.124
+
+      - name: Show .NET info
+        shell: pwsh
+        run: |
+          dotnet --info
+
+      - name: Generate Version
+        id: version
+        shell: pwsh
+        run: |
+          $v = (Get-Date).ToUniversalTime().ToString("yyyy.Mdd.HHmm.0")
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "version=$v"
+
+      - name: Build plugin (Release)
+        shell: pwsh
+        run: |
+          dotnet build Emby.Plugins.JavScraper/Emby.Plugins.JavScraper.csproj --configuration Release -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Prepare outputs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+
+          $zip = Get-ChildItem "Emby.Plugins.JavScraper/bin" -Filter "Emby.JavScraper@v*.zip" -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if ($zip) { Copy-Item $zip.FullName -Destination dist -Force }
+
+          $dll = Get-ChildItem "Emby.Plugins.JavScraper/bin" -Filter "JavScraper.dll" -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "Release" } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if ($dll) { Copy-Item $dll.FullName -Destination "dist/JavScraper.dll" -Force }
+
+          Get-ChildItem dist -Force
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emby-JavScraper-${{ steps.version.outputs.version }}
+          path: dist
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: emby-javscraper-v${{ steps.version.outputs.version }}
+          name: Emby JavScraper v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: dist/*
