@@ -297,6 +297,12 @@ namespace Emby.Plugins.JavScraper
             if (enableScrapers?.Any() == true)
                 scrapers = scrapers.Where(o => enableScrapers.Contains(o.Name)).ToList();
 
+            var disabledScrapers = new[] { "MgsTage", "R18" };
+            var beforeFilterCount = scrapers.Count;
+            scrapers = scrapers.Where(o => disabledScrapers.Contains(o.Name, StringComparer.OrdinalIgnoreCase) == false).ToList();
+            if (scrapers.Count != beforeFilterCount)
+                _logger?.Info($"{nameof(GetSearchResults)} filtered unavailable scrapers: {string.Join(", ", disabledScrapers)}");
+
             if (javid?.matcher == nameof(JavIdRecognizer.FC2))
             {
                 string digits = new string((javid.id ?? string.Empty).Where(char.IsDigit).ToArray());
