@@ -77,21 +77,21 @@ namespace Emby.Plugins.JavScraper.Services
             };
             try
             {
-                var resp = await client.GetAsync("https://api.github.com/repos/JavScraper/Emby.Plugins.JavScraper/releases/latest");
+                var resp = await client.GetAsync("https://api.github.com/repos/RoaycL/Emby.Plugins.JavScraper/releases/latest");
 
                 if (resp.StatusCode == System.Net.HttpStatusCode.OK)
                 {
                     var data = jsonSerializer.DeserializeFromStream<Rootobject>(await resp.Content.ReadAsStreamAsync());
                     r.UpdateMessage = data.body;
 
-                    string key =
+                    string[] keys =
 #if __JELLYFIN__
-                        "Jellyfin";
+                        new[] { "Jellyfin.JavScraper", "Jellyfin" };
 #else
-                        "Emby.JavScraper";
+                        new[] { "Emby.JavScraper", "JavScraper" };
 #endif
 
-                    foreach (var v in data.assets.Where(o => o.name.IndexOf(key, StringComparison.OrdinalIgnoreCase) >= 0 && o.name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)))
+                    foreach (var v in data.assets.Where(o => keys.Any(key => o.name.IndexOf(key, StringComparison.OrdinalIgnoreCase) >= 0) && o.name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)))
                     {
                         var m = regexVersion.Match(v.name);
                         if (m.Success)
