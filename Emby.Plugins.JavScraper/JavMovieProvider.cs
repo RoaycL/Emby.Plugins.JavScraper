@@ -296,6 +296,53 @@ namespace Emby.Plugins.JavScraper
             var enableScrapers = Plugin.Instance?.Configuration?.GetEnableScrapers()?.Select(o => o.Name).ToList();
             if (enableScrapers?.Any() == true)
                 scrapers = scrapers.Where(o => enableScrapers.Contains(o.Name)).ToList();
+
+            if (javid?.matcher == nameof(JavIdRecognizer.FC2))
+            {
+                string digits = new string((javid.id ?? string.Empty).Where(char.IsDigit).ToArray());
+                var fc2Keys = new[]
+                {
+                    key,
+                    $"FC2-{digits}",
+                    $"FC2-PPV-{digits}",
+                    $"FC2PPV-{digits}",
+                    $"FC2PPV{digits}",
+                    digits,
+                    searchInfo.Name
+                }
+                .Where(v => string.IsNullOrWhiteSpace(v) == false)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+                _logger?.Info($"{nameof(GetSearchResults)} FC2 candidates: {string.Join(", ", fc2Keys)}");
+
+                var fc2Scrapers = scrapers.Where(o => string.Equals(o.Name, "FC2", StringComparison.OrdinalIgnoreCase)).ToList();
+                foreach (var fc2Key in fc2Keys)
+                {
+                    foreach (var scraper in fc2Scrapers)
+                    {
+                        var results = await scraper.Query(fc2Key).ConfigureAwait(false);
+                        if (results?.Any() == true)
+                        {
+                            _logger?.Info($"{nameof(GetSearchResults)} name:{searchInfo.Name} matched FC2 key:{fc2Key} count:{results.Count}");
+                            return results.Select(m =>
+                            {
+                                var result = new RemoteSearchResult
+                                {
+                                    Name = $"{m.Num} {m.Title}",
+                                    ProductionYear = m.GetYear(),
+                                    ImageUrl = null,
+                                    SearchProviderName = Name,
+                                    PremiereDate = m.GetDate(),
+                                };
+                                result.SetJavVideoIndex(_jsonSerializer, m);
+                                return result;
+                            }).ToList();
+                        }
+                    }
+                }
+            }
+
             var tasks = scrapers.Select(o => o.Query(key)).ToArray();
             await Task.WhenAll(tasks);
             var all = tasks.Where(o => o.Result?.Any() == true).SelectMany(o => o.Result).ToList();
