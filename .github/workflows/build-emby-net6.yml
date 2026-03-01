@@ -20,7 +20,12 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 8.0.124
+
+      - name: Show .NET info
+        shell: pwsh
+        run: |
+          dotnet --info
 
       - name: Generate Version
         id: version
