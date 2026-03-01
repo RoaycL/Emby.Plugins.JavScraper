@@ -359,14 +359,36 @@ namespace Emby.Plugins.JavScraper
                   .SelectMany(o => o)
                   .ToList();
 
+            string NormalizeCode(string value)
+                => new string((value ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+
+            var searchCode = NormalizeCode(javid?.id ?? searchInfo.Name);
+            if (string.IsNullOrWhiteSpace(searchCode) == false)
+            {
+                var exactMatches = all.Where(o => NormalizeCode(o.Num) == searchCode).ToList();
+                if (exactMatches.Any())
+                {
+                    _logger?.Info($"{nameof(GetSearchResults)} exact code match hit:{searchCode} count:{exactMatches.Count}");
+                    all = exactMatches;
+                }
+                else
+                {
+                    all = all.OrderByDescending(o => NormalizeCode(o.Num).StartsWith(searchCode, StringComparison.OrdinalIgnoreCase))
+                             .ThenByDescending(o => NormalizeCode(o.Num).Contains(searchCode, StringComparison.OrdinalIgnoreCase))
+                             .ThenBy(o => o.Provider)
+                             .ToList();
+                }
+            }
+
             foreach (var m in all)
             {
+                var title = string.IsNullOrWhiteSpace(m.Title) ? m.Num : $"{m.Num} {m.Title}";
                 var result = new RemoteSearchResult
                 {
-                    Name = $"{m.Num} {m.Title}",
+                    Name = title?.Trim(),
                     ProductionYear = m.GetYear(),
                     ImageUrl = await imageProxyService.GetLocalUrl(m.Cover, with_api_url: false),
-                    SearchProviderName = Name,
+                    SearchProviderName = $"{Name}/{m.Provider}",
                     PremiereDate = m.GetDate(),
                 };
                 result.SetJavVideoIndex(_jsonSerializer, m);
